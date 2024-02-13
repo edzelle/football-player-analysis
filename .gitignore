@@ -173,3 +173,5 @@ FakesAssemblies/
 
 #Ignore JSON
 *.json
+
+grants.sql

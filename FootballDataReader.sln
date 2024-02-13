@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28307.421
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FootballDataReader.Host", "FootballDataReader\FootballDataReader.Host.csproj", "{4D4A2AF0-752E-4BD9-A587-8A4000CE9D3B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FootballDataReader.Host", "FootballDataReader.Host\FootballDataReader.Host.csproj", "{4D4A2AF0-752E-4BD9-A587-8A4000CE9D3B}"
 	ProjectSection(ProjectDependencies) = postProject
 		{E2C8A30D-F71F-4119-AFCD-503CFF519348} = {E2C8A30D-F71F-4119-AFCD-503CFF519348}
 		{2735EDC1-39DD-413B-96AF-7B208143642E} = {2735EDC1-39DD-413B-96AF-7B208143642E}
