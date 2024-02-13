@@ -1,0 +1,53 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.421
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FootballDataReader.Host", "FootballDataReader\FootballDataReader.Host.csproj", "{4D4A2AF0-752E-4BD9-A587-8A4000CE9D3B}"
+	ProjectSection(ProjectDependencies) = postProject
+		{E2C8A30D-F71F-4119-AFCD-503CFF519348} = {E2C8A30D-F71F-4119-AFCD-503CFF519348}
+		{2735EDC1-39DD-413B-96AF-7B208143642E} = {2735EDC1-39DD-413B-96AF-7B208143642E}
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FootballDataReader.Data", "FootballDataReader.Data\FootballDataReader.Data.csproj", "{2735EDC1-39DD-413B-96AF-7B208143642E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FootballDataReader.Logic", "FootballDataReader.Logic\FootballDataReader.Logic.csproj", "{E2C8A30D-F71F-4119-AFCD-503CFF519348}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FootballDataReader.Client", "FootballDataReader.Client\FootballDataReader.Client.csproj", "{78C8F40D-E2C4-4182-9CB2-9A1C3F4702FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FootballDataReader.Models", "FootballDataReader.Models\FootballDataReader.Models.csproj", "{DEAA9314-0654-4C1A-9647-07CD35BCCDCA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4D4A2AF0-752E-4BD9-A587-8A4000CE9D3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D4A2AF0-752E-4BD9-A587-8A4000CE9D3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D4A2AF0-752E-4BD9-A587-8A4000CE9D3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D4A2AF0-752E-4BD9-A587-8A4000CE9D3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2735EDC1-39DD-413B-96AF-7B208143642E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2735EDC1-39DD-413B-96AF-7B208143642E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2735EDC1-39DD-413B-96AF-7B208143642E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2735EDC1-39DD-413B-96AF-7B208143642E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2C8A30D-F71F-4119-AFCD-503CFF519348}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2C8A30D-F71F-4119-AFCD-503CFF519348}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2C8A30D-F71F-4119-AFCD-503CFF519348}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2C8A30D-F71F-4119-AFCD-503CFF519348}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78C8F40D-E2C4-4182-9CB2-9A1C3F4702FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78C8F40D-E2C4-4182-9CB2-9A1C3F4702FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78C8F40D-E2C4-4182-9CB2-9A1C3F4702FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78C8F40D-E2C4-4182-9CB2-9A1C3F4702FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DEAA9314-0654-4C1A-9647-07CD35BCCDCA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEAA9314-0654-4C1A-9647-07CD35BCCDCA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEAA9314-0654-4C1A-9647-07CD35BCCDCA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEAA9314-0654-4C1A-9647-07CD35BCCDCA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A015ECD0-4F9F-4380-99F3-66A152DE9A87}
+	EndGlobalSection
+EndGlobal
