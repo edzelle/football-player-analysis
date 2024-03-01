@@ -175,3 +175,8 @@ FakesAssemblies/
 *.json
 
 grants.sql
+/python/.idea
+/WR-cluster-output-no-college-8-encoded.csv
+/WR-cluster-output-16-encoded.csv
+/WR-cluster-output-100-encoded.csv
+/WR cluster output.csv

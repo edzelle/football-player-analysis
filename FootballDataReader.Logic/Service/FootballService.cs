@@ -450,6 +450,39 @@ namespace FootballDataReader.Logic.Service
             }
         }
 
+        public async Task AddPlayerAges()
+        {
+            int i = 0;
+
+            var players = await _context.Players.ToListAsync();
+
+            foreach (var player in players)
+            {
+                if (i++ % 500 == 0)
+                {
+                    _logger.LogInformation("Iteration: " + i);
+                }
+                var playerSeasons = (await _context.PlayerSeason.Where(x => x.PlayerId == player.Id ).ToListAsync()).OrderByDescending(x => x.Year).ToList();
+
+                var firstSeason = playerSeasons.LastOrDefault(x => x.PlayerAge != 0 && x.PlayerAge != null);
+                if (firstSeason != null)
+                {
+                    var index = playerSeasons.IndexOf(firstSeason);
+                    if (index >= 0)
+                    {
+                        var age = firstSeason.PlayerAge;
+                        while (++index < playerSeasons.Count)
+                        {
+                            var season = playerSeasons.ElementAt(index);
+                            season.PlayerAge = --age;
+                        }
+                        await _context.SaveChangesAsync();
+                    }
+
+                }
+            }
+            }
+
         private async Task<PlayerPredictedPointsAddedDto> GetCollegePlayerPredictedPointsAddedByPlayerIdAndYear(int playerId, string year)
         {
             var query = string.Format("ppa/players/season?year={0}&playerId={1}", year, playerId);
