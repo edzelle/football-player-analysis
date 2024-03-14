@@ -18,6 +18,9 @@ namespace FootballDataReader.Logic.IService
         Task LoadCollegeApiDataToDataBase();
 
         Task CalculateYearTurnedPro();
+
         Task AddPlayerAges();
+
+        Task AddPlayerClusters(string Path);
     }
 }
