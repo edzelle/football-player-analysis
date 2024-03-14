@@ -34,7 +34,7 @@ namespace FootballDataReader.Logic.Service
 
         public async Task ProcessRookieReceiverDataAndSaveToFile(string path)
         {
-            string[] files = Directory.GetFiles(path, "*.csv");
+            var files = Directory.GetFiles(path, "*.csv").Reverse().ToList();
             foreach (string file in files)
             {
                 if (!File.Exists(file))
@@ -42,6 +42,10 @@ namespace FootballDataReader.Logic.Service
                     throw new Exception("File does not exist: " + file);
                 }
                 var year = file.Split('\\').Last().Substring(0, 4);
+                if (int.Parse(year) > 2012)
+                {
+                    continue;
+                }
                 using (TextFieldParser csvParser = new TextFieldParser(file))
                 {
                     csvParser.SetDelimiters(new string[] { "," });
@@ -58,13 +62,39 @@ namespace FootballDataReader.Logic.Service
                         string Yards = fields[6];
                         string YardsPerReception = fields[7];
                         string TDs = fields[8];
-
+                        string pfrId = fields[17];
 
                         var player = await _context.Players.Where(x => x.Name == Name).FirstOrDefaultAsync();
 
+                                        
                         if (player == null)
                         {
-                            player = await CreateNewCollegePlayer(Name, Games, year);
+                            try
+                            {
+                                player = await CreateNewCollegePlayer(Name, Games, year, pfrId);
+                            } catch (Exception ex)
+                            {
+                                throw;
+                            }
+                        }
+                        else
+                        {
+                            if (player.ProFootballReferenceId != null && player.ProFootballReferenceId != pfrId)
+                            {
+                                player = await CreateNewCollegePlayer(Name, Games, year, pfrId);
+                            }
+                            else
+                            {
+                                var priorPlayerSeason = await _context.PlayerSeason.Where(x => x.PlayerId == player.Id).OrderBy(x => x.Year).ToListAsync();
+                                var lastDocumentedSeason = priorPlayerSeason.FirstOrDefault();
+                                if (lastDocumentedSeason != null && lastDocumentedSeason.Year.Year - int.Parse(year) != 1 && lastDocumentedSeason.Year.Year - int.Parse(year) != 0)
+                                {
+                                    
+                                    // New Player with same name
+                                    player = await CreateNewCollegePlayer(Name, Games, year, pfrId);
+                                    
+                                }
+                            }
                         }
 
                         var team = await _context.Teams.Where(x => x.TeamName == TeamName).FirstOrDefaultAsync();
@@ -123,9 +153,47 @@ namespace FootballDataReader.Logic.Service
             }
         }
 
+        public async Task AddPlayerClusters(string path)
+        {
+            string[] files = Directory.GetFiles(string.Format("{0}", path), "*.csv");
+            foreach (string file in files)
+            {
+                if (!File.Exists(file))
+                {
+                    throw new Exception("File does not exist: " + file);
+                }
+                if (!file.Contains("meanshift"))
+                {
+                    continue;
+                }
+                using (TextFieldParser csvParser = new TextFieldParser(file))
+                {
+                    csvParser.SetDelimiters(new string[] { "," });
+                    csvParser.HasFieldsEnclosedInQuotes = false;
+                    while (!csvParser.EndOfData)
+                    {
+                        string[] fields = csvParser.ReadFields();
+                        int playerId = int.Parse(fields[0]);
+                        int cluster = int.Parse(fields[2]);
+
+                        var player = await _context.Players.FirstOrDefaultAsync(x => x.Id == playerId);
+
+                        if (player != null)
+                        {
+                            player.WRClusterMeanshift = cluster;
+
+                            await _context.SaveChangesAsync();
+                        }
+
+                    }
+                }
+                break; // Only should be one file at a time
+            }
+        }
+
         public async Task ProcessNFLReceiverDataAndSaveToFile(string path)
         {
-            string[] files = Directory.GetFiles(path, "*-tester.csv");
+            string[] files = Directory.GetFiles(path, "*.csv");
             foreach (string file in files)
             {
                 if (!File.Exists(file))
@@ -133,34 +201,80 @@ namespace FootballDataReader.Logic.Service
                     throw new Exception("File does not exist: " + file);
                 }
                 var year = file.Split('\\').Last().Substring(0, 4);
+                if  (int.Parse(year) > 2012 || int.Parse(year) < 1992)
+                {
+                    continue;
+                }
                 using (TextFieldParser csvParser = new TextFieldParser(file))
                 {
                     csvParser.SetDelimiters(new string[] { "," });
                     csvParser.HasFieldsEnclosedInQuotes = false;
                     csvParser.ReadLine();
-
+                    string Targets = string.Empty;
+                    string Receptions = string.Empty;
+                    string CatchPec = string.Empty;
+                    string Yards = string.Empty;
+                    string YardsPerReception = string.Empty;
+                    string TDs = string.Empty;
+                    string FirstDowns = string.Empty;
+                    string SuccessPec = string.Empty;
+                    string Long = string.Empty;
+                    string YardsPerTarget = string.Empty;
+                    string ReceptionsPerGame = string.Empty;
+                    string YardsPerGame = string.Empty;
+                    string Fumbles = string.Empty;
                     while (!csvParser.EndOfData)
                     {
                         string[] fields = csvParser.ReadFields();
-                        string Name = fields[1].Trim( new char[] { '*', '+' });
+                        string Name = fields[1].Trim(new char[] { '*', '+' });
                         string TeamName = fields[2];
                         string Age = fields[3];
                         string Position = fields[4];
                         string GamesPlayed = fields[5];
                         string GamesStarted = fields[6];
-                        string Targets = fields[7];
-                        string Receptions = fields[8];
-                        string CatchPec = fields[9].Trim('%');
-                        string Yards = fields[10];
-                        string YardsPerReception = fields[11];
-                        string TDs = fields[12];
-                        string FirstDowns = fields[13];
-                        string SuccessPec = fields[14].Trim('%');
-                        string Long = fields[15];
-                        string YardsPerTarget = fields[16];
-                        string ReceptionsPerGame = fields[17];
-                        string YardsPerGame = fields[18];
-                        string Fumbles = fields[19];
+
+                        if (fields.Length == 17)
+                        {
+                            Receptions = fields[7];
+                            Yards = fields[8];
+                            YardsPerReception = fields[9];
+                            TDs = fields[10];
+                            Long = fields[11];
+                            YardsPerTarget = fields[12];
+                            ReceptionsPerGame = fields[13];
+                            YardsPerGame = fields[14];
+                            Fumbles = fields[15];
+                        }
+                        else if (fields.Length == 19)
+                        {
+                            Targets = fields[7];
+                            Receptions = fields[8];
+                            CatchPec = fields[9].Trim('%');
+                            Yards = fields[10];
+                            YardsPerReception = fields[11];
+                            TDs = fields[12];
+                            Long = fields[13];
+                            YardsPerTarget = fields[14];
+                            ReceptionsPerGame = fields[15];
+                            YardsPerGame = fields[16];
+                            Fumbles = fields[17];
+                        }
+                        else
+                        {      
+                            Targets = fields[7];
+                            Receptions = fields[8];
+                            CatchPec = fields[9].Trim('%');
+                            Yards = fields[10];
+                            YardsPerReception = fields[11];
+                            TDs = fields[12];
+                            FirstDowns = fields[13];
+                            SuccessPec = fields[14].Trim('%');
+                            Long = fields[15];
+                            YardsPerTarget = fields[16];
+                            ReceptionsPerGame = fields[17];
+                            YardsPerGame = fields[18];
+                            Fumbles = fields[19];
+                        }
 
                         var player = await _context.Players.Where(x => x.Name == Name).FirstOrDefaultAsync();
 
@@ -268,11 +382,16 @@ namespace FootballDataReader.Logic.Service
             return await _context.Teams.FirstAsync(x => x.TeamName == teamName);
         }
 
-        public async Task<Player> CreateNewCollegePlayer(string Name, string Games, string year)
+        public async Task<Player> CreateNewCollegePlayer(string Name, string Games, string year, string pfrId)
         {
+            if (string.IsNullOrEmpty(Games))
+            {
+                Games = "0";
+            }
             Player player = new Player()
             {
                 Name = Name,
+                ProFootballReferenceId = pfrId,
                 Seasons = new List<PlayerSeason>()
                             {
                                 new PlayerSeason()
@@ -333,7 +452,7 @@ namespace FootballDataReader.Logic.Service
             foreach(var playerId in playerIds)
             {
                 playerIteration++;
-                if (playerIteration % 100 == 0)
+                if (playerIteration % 500 == 0)
                 {
                     _logger.LogInformation("Processing Iteration: " + playerIteration.ToString());
                 }
@@ -362,7 +481,7 @@ namespace FootballDataReader.Logic.Service
 
                     if (playerSeason == null)
                     {
-                        _logger.LogWarning(string.Format("Player Season Not Found: {0}, {1}", playerId, season.Year));
+                        _logger.LogWarning(string.Format("Player Season Not Found: {0}, {1}, {2}", playerId, player.Name, season.Year));
                         continue;
                     }
 

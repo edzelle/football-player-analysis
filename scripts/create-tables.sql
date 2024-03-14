@@ -170,3 +170,16 @@ alter table football.players
 
 alter table football.player_receiving_stats
     alter column receiving_success_rate NUMERIC(4,1);
+
+alter table football.players
+    add wr_cluster_label INT;
+
+
+alter table football.players
+    add pfr_id VARCHAR(30);
+
+alter table football.players
+    add wr_cluster_label_kmeans INT;
+
+alter table football.players
+    add wr_cluster_label_meanshift INT;

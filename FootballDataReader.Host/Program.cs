@@ -53,20 +53,23 @@ namespace FootballDataReader
             var footballService = serviceProvider.GetService<IFootballService>();
 
 
-            RunAsync(footballService, directory.Directory).Wait();
+            RunAsync(footballService, directory).Wait();
 
 
         }
 
-        private static async Task RunAsync(IFootballService footballService, string dataDirectory)
+        private static async Task RunAsync(IFootballService footballService, DataDirectorySettings directory)
         {
-            string path = dataDirectory;
-           // await footballService.ProcessNFLReceiverDataAndSaveToFile(path);
-           // await footballService.ProcessRookieReceiverDataAndSaveToFile(path); ;
-           // await footballService.LoadCollegeApiDataToDataBase();
+            //await footballService.ProcessNFLReceiverDataAndSaveToFile(path);
+            //await footballService.AddPlayerClusters(path);
+            //await footballService.ProcessRookieReceiverDataAndSaveToFile(directory.WRCollegeDirectory);
+            //await footballService.LoadCollegeApiDataToDataBase();
 
             // TODO: Smooth EFF-LIM dates for player_plays_for_team
-            //await footballService.CalculateYearTurnedPro();
+
+            await footballService.AddPlayerClusters(directory.ClusterDirectory);
+
+            await footballService.CalculateYearTurnedPro();
             await footballService.AddPlayerAges();
 
         }

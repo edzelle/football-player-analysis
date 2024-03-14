@@ -34,6 +34,18 @@ namespace FootballDataReader.Data.Entities
         [Column("cfdb_player_id")]
         public int? CFDBPlayerId { get; set; }
 
+        [Column("wr_cluster_label")]
+        public int? WRCluster { get; set; }
+
+        [Column("wr_cluster_label_kmeans")]
+        public int? WRClusterKmeans { get; set; }
+
+        [Column("wr_cluster_label_meanshift")]
+        public int? WRClusterMeanshift { get; set; }
+
+        [Column("pfr_id")]
+        public string ProFootballReferenceId { get; set; }
+
         public virtual ICollection<PlayerSeason> Seasons { get; set; } 
 
         public virtual ICollection<PlayerReceivingStats> PlayerReceivingStats { get; set; }
