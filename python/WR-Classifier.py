@@ -101,7 +101,73 @@ def balance_data_with_oversampling(label_count, data, labels):
 	x = 0
 	return data, labels
 
+def load_encoder_model():
+	return tf.keras.models.load_model('python/models/8-encoder-WR-cluster-output-rookies-1990-td.keras', safe_mode=False)
+
+
 def train_test_split_as_tensor_balance_category_v2(data, labels, training_size, useage_count, player_names, label_count):
+	
+	##data, labels = balance_data_with_oversampling(label_count, data, labels)
+	
+	train_data = []
+	test_data = []
+	train_labels = []
+	test_labels = []
+	train_splits = []
+	test_splits = []
+	player_names_train = []
+	player_names_test = []
+
+
+	for label_usage in useage_count:
+		label = label_usage[0]
+		indicies_with_label = [i for i, e in enumerate(labels) if e == label]
+
+		train_num = round(len(indicies_with_label) * training_size)
+		if (len(indicies_with_label) < 2):
+			continue
+
+		train_index = random.sample(indicies_with_label, 1)
+		indicies_with_label.pop(indicies_with_label.index(train_index[0]))
+
+		train_data.extend(data[train_index])  
+		train_splits.append(data[train_index].shape[0])
+		train_labels.append(labels[train_index[0]])
+		player_names_train.append(player_names[train_index[0]])
+ 
+		test_index = random.sample(indicies_with_label, 1)
+		indicies_with_label.pop(indicies_with_label.index(test_index[0]))
+          
+		test_data.extend(data[test_index])
+		test_splits.append(data[test_index].shape[0])  
+		test_labels.append(labels[test_index[0]])
+		player_names_test.append(player_names[test_index[0]])
+
+
+		training_indicies = random.sample(indicies_with_label, min(train_num, len(indicies_with_label)))
+		testing_indicies = [x for x in indicies_with_label if x not in training_indicies]
+            
+		for index in training_indicies:
+			train_data.extend(data[index])  
+			train_splits.append(data[index].shape[0])  
+			train_labels.append(labels[index])
+			player_names_train.append(player_names[index])
+                  
+		for index in testing_indicies:
+			test_data.extend(data[index])  
+			test_splits.append(data[index].shape[0])  
+			test_labels.append(labels[index])
+			player_names_test.append(player_names[index])
+	
+	train_data = tf.RaggedTensor.from_row_lengths(values=train_data, row_lengths=train_splits)
+	test_data = tf.RaggedTensor.from_row_lengths(values=test_data, row_lengths=test_splits)
+	## one hot encodes labels
+	train_labels = pd.get_dummies(train_labels).astype('float32').values 
+	test_labels = pd.get_dummies(test_labels).astype('float32').values 
+
+	return train_data, test_data, train_labels, test_labels
+
+def train_test_split_as_tensor_balance_category_v3(data, labels, training_size, useage_count, player_names, label_count):
 	
 	##data, labels = balance_data_with_oversampling(label_count, data, labels)
 	
@@ -120,11 +186,13 @@ def train_test_split_as_tensor_balance_category_v2(data, labels, training_size, 
 		label = label_usage[0]
 		indicies_with_label = [i for i, e in enumerate(labels) if e == label]
         
+		if max_label_count > label_usage[1]:
+			generated_samples_for_label = generateSamples(label, max_label_count - label_usage[1])
 
-		train_num = round((max_label_count * 0.2) * training_size)
+		train_num = round(len(indicies_with_label) * training_size)
 		if (len(indicies_with_label) < 2):
 			continue
-		
+
 		train_index = random.sample(indicies_with_label, 1)
 		indicies_with_label.pop(indicies_with_label.index(train_index[0]))
 
@@ -164,236 +232,307 @@ def train_test_split_as_tensor_balance_category_v2(data, labels, training_size, 
 
 	return train_data, test_data, train_labels, test_labels
 
+def create_classifier_model(ragged_tensor, player_labels, encoder_model, cluster_type):
+
+	encoded_data = encoder_model.predict(ragged_tensor)
+
+
+	oversample = SMOTE(k_neighbors=1)
+	X, y = oversample.fit_resample(encoded_data, player_labels)
+	y = pd.get_dummies(y).astype('float32').values 
+	##train_data, test_data, train_labels, test_labels = train_test_split_as_tensor_balance_category_v2(ragged_tensor, player_labels, 0.8, filtered_count, player_names, label_count)
+
+	train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.2)
+
+
+
+	input_layer = keras.Input(shape=encoded_data.shape[1])
+
+
+	dense_layer1 = layers.Dense(64, activation='relu')(input_layer)
+	dense_layer2 = layers.Dense(48, activation='relu')(dense_layer1)
+	dense_layer3 = layers.Dense(32, activation='relu')(dense_layer2)
+
+	output_layer = layers.Dense(len(set(player_labels)), activation='softmax')(dense_layer3)
+
+	model = keras.models.Model(inputs=input_layer, outputs=output_layer)
+	model.summary()
+
+	model.compile(optimizer="adam", loss=tf.keras.losses.categorical_crossentropy , metrics=[tf.keras.metrics.CategoricalAccuracy()])
+
+	epoch_size = 1000
+
+	history = model.fit(train_X, train_y, epochs=epoch_size, batch_size=10, shuffle=True, validation_data=(test_X, test_y))
+
+	num_epochs = len(history.epoch)
+
+	history_fig, (ax1, ax2) = plt.subplots(2, sharex=True)
+	history_fig.suptitle('Classifier Training Performance')
+	ax1.plot(range(0,num_epochs), history.history['categorical_accuracy'], color='blue')
+	ax1.plot(range(0,num_epochs), history.history['val_categorical_accuracy'], color='red', alpha=0.9)
+	ax1.set(ylabel='Reconstruction Accuracy')
+	ax2.plot(range(0,num_epochs), np.log10(history.history['loss']), color='blue')
+	ax2.plot(range(0,num_epochs), np.log10(history.history['val_loss']), color='red', alpha=0.9)
+	ax2.set(ylabel='log_10(loss)', xlabel='Training Epoch')
+
+	history_fig.show()
+
+	y_pred = model.predict(test_X)
+	y_pred = tf.argmax(y_pred, axis=1)
+
+	y_true = tf.argmax(test_y, axis=1)
+	confusion_mtx = tf.math.confusion_matrix(y_true, y_pred)
+
+
+	plt.figure(figsize=(10, 8))
+	sns.heatmap(confusion_mtx,
+				xticklabels=set(y_true.numpy()),
+				yticklabels=set(y_true.numpy()),
+				annot=True, fmt='g')
+	plt.xlabel('Prediction')
+	plt.ylabel('Label')
+	plt.show()
+
+	model.save('python/models/WR-rookie-{0}-cluster-classifier-from-8-dims.keras'.format(cluster_type))
+
+def load_classifier_model(cluster_type):
+	try:
+		return tf.keras.models.load_model('python/models/WR-rookie-{0}-cluster-classifier-from-8-dims.keras'.format(cluster_type), safe_mode=False)
+	except:
+		return None
+
 cur_path = os.path.abspath(os.path.dirname(__file__))
 new_path = os.path.join(cur_path, "..\\FootballDataReader.Host\\appsettings.json")
 
 conn = getdbconnectionfromconfiguration(new_path)
-
-meanshift_query_string ="""
-select
-p.name,
-clust.wr_cluster_label_meanshift wr_cluster_label,
-p.height,
-p.weight,
-ps.player_id,
-ps.player_age,
-ps.games_played,
-ps.games_started,
-prs.targets,
-prs.receptions,
-prs.catch_per,
-prs.yards,
-prs.yards_per_rec,
-prs.tds,
-prs.first_downs_receiving,
-prs.receiving_success_rate,
-prs.longest_reception,
-prs.yards_per_target,
-prs.receptions_per_game,
-prs.yards_per_game,
-prs.fumbles,
-prs.overall_usage,
-prs.pass_usage,
-prs.rush_usage,
-prs.first_down_usage,
-prs.second_down_usage,
-prs.third_down_usage,
-prs.standard_downs_usage,
-prs.passing_downs_usage,
-prs.average_ppa_all,
-prs.average_ppa_pass,
-prs.average_ppa_rush,
-prs.average_ppa_first_down,
-prs.average_ppa_second_down,
-prs.average_ppa_third_down,
-prs.average_ppa_standard_downs,
-prs.average_ppa_passing_down,
-prs.total_ppa_all,
-prs.total_ppa_pass,
-prs.total_ppa_rush,
-prs.total_ppa_first_down,
-prs.total_ppa_second_down,
-prs.total_ppa_third_down,
-prs.total_ppa_standard_downs,
-prs.total_ppa_passing_down
-from football.player_season ps,
-football.players p,
-football.player_receiving_stats prs,
-(select p.id, p.wr_cluster_label_meanshift from (select count(*), wr_cluster_label_meanshift
+cluster_type = "kmeans"
+query_string = ''
+if cluster_type == "kmeans":
+	query_string ="""
+	select
+	p.name,
+	clust.wr_cluster_label_meanshift wr_cluster_label,
+	p.height,
+	p.weight,
+	ps.player_id,
+	ps.player_age,
+	ps.games_played,
+	ps.games_started,
+	prs.targets,
+	prs.receptions,
+	prs.catch_per,
+	prs.yards,
+	prs.yards_per_rec,
+	prs.tds,
+	prs.first_downs_receiving,
+	prs.receiving_success_rate,
+	prs.longest_reception,
+	prs.yards_per_target,
+	prs.receptions_per_game,
+	prs.yards_per_game,
+	prs.fumbles,
+	prs.overall_usage,
+	prs.pass_usage,
+	prs.rush_usage,
+	prs.first_down_usage,
+	prs.second_down_usage,
+	prs.third_down_usage,
+	prs.standard_downs_usage,
+	prs.passing_downs_usage,
+	prs.average_ppa_all,
+	prs.average_ppa_pass,
+	prs.average_ppa_rush,
+	prs.average_ppa_first_down,
+	prs.average_ppa_second_down,
+	prs.average_ppa_third_down,
+	prs.average_ppa_standard_downs,
+	prs.average_ppa_passing_down,
+	prs.total_ppa_all,
+	prs.total_ppa_pass,
+	prs.total_ppa_rush,
+	prs.total_ppa_first_down,
+	prs.total_ppa_second_down,
+	prs.total_ppa_third_down,
+	prs.total_ppa_standard_downs,
+	prs.total_ppa_passing_down
+	from football.player_season ps,
+	football.players p,
+	football.player_receiving_stats prs,
+	(select p.id, p.wr_cluster_label_meanshift from (select count(*), wr_cluster_label_meanshift
+			from football.players where position = 'WR'
+			group by wr_cluster_label_meanshift
+			order by count desc) c,
+		football.players p 
+		where c.count > 1
+		and c.wr_cluster_label_meanshift = p.wr_cluster_label_meanshift
+		union
+		select p.id, 500 wr_cluster_label from (select count(*), wr_cluster_label_meanshift
 		from football.players where position = 'WR'
 		group by wr_cluster_label_meanshift
 		order by count desc) c,
-	football.players p 
-	where c.count > 1
-	and c.wr_cluster_label_meanshift = p.wr_cluster_label_meanshift
-	union
-	select p.id, 500 wr_cluster_label from (select count(*), wr_cluster_label_meanshift
-	from football.players where position = 'WR'
-	group by wr_cluster_label_meanshift
-	order by count desc) c,
-	football.players p
-	where c.count = 1
-	and p.wr_cluster_label_meanshift = c.wr_cluster_label_meanshift) clust
-where p.id = ps.player_id
-and p.position = 'WR'
-and prs.player_id = ps.player_id
-and prs.year = ps.year
-and ps.is_college_season = true
-and p.id <> 1402
-and p.id = clust.id
-order by ps.player_id, ps.year;
-"""
-
-kmeans_query_string ="""
-select
-p.name,
-clust.wr_cluster_label_kmeans wr_cluster_label,
-p.height,
-p.weight,
-ps.player_id,
-ps.player_age,
-ps.games_played,
-ps.games_started,
-prs.targets,
-prs.receptions,
-prs.catch_per,
-prs.yards,
-prs.yards_per_rec,
-prs.tds,
-prs.first_downs_receiving,
-prs.receiving_success_rate,
-prs.longest_reception,
-prs.yards_per_target,
-prs.receptions_per_game,
-prs.yards_per_game,
-prs.fumbles,
-prs.overall_usage,
-prs.pass_usage,
-prs.rush_usage,
-prs.first_down_usage,
-prs.second_down_usage,
-prs.third_down_usage,
-prs.standard_downs_usage,
-prs.passing_downs_usage,
-prs.average_ppa_all,
-prs.average_ppa_pass,
-prs.average_ppa_rush,
-prs.average_ppa_first_down,
-prs.average_ppa_second_down,
-prs.average_ppa_third_down,
-prs.average_ppa_standard_downs,
-prs.average_ppa_passing_down,
-prs.total_ppa_all,
-prs.total_ppa_pass,
-prs.total_ppa_rush,
-prs.total_ppa_first_down,
-prs.total_ppa_second_down,
-prs.total_ppa_third_down,
-prs.total_ppa_standard_downs,
-prs.total_ppa_passing_down
-from football.player_season ps,
-football.players p,
-football.player_receiving_stats prs,
-(select p.id, p.wr_cluster_label_kmeans from (select count(*), wr_cluster_label_kmeans
+		football.players p
+		where c.count = 1
+		and p.wr_cluster_label_meanshift = c.wr_cluster_label_meanshift) clust
+	where p.id = ps.player_id
+	and p.position = 'WR'
+	and prs.player_id = ps.player_id
+	and prs.year = ps.year
+	and ps.is_college_season = true
+	and p.id <> 1402
+	and p.id = clust.id
+	order by ps.player_id, ps.year;
+	"""
+elif cluster_type == "kmeans":
+	query_string ="""
+	select
+	p.name,
+	clust.wr_cluster_label_kmeans wr_cluster_label,
+	p.height,
+	p.weight,
+	ps.player_id,
+	ps.player_age,
+	ps.games_played,
+	ps.games_started,
+	prs.targets,
+	prs.receptions,
+	prs.catch_per,
+	prs.yards,
+	prs.yards_per_rec,
+	prs.tds,
+	prs.first_downs_receiving,
+	prs.receiving_success_rate,
+	prs.longest_reception,
+	prs.yards_per_target,
+	prs.receptions_per_game,
+	prs.yards_per_game,
+	prs.fumbles,
+	prs.overall_usage,
+	prs.pass_usage,
+	prs.rush_usage,
+	prs.first_down_usage,
+	prs.second_down_usage,
+	prs.third_down_usage,
+	prs.standard_downs_usage,
+	prs.passing_downs_usage,
+	prs.average_ppa_all,
+	prs.average_ppa_pass,
+	prs.average_ppa_rush,
+	prs.average_ppa_first_down,
+	prs.average_ppa_second_down,
+	prs.average_ppa_third_down,
+	prs.average_ppa_standard_downs,
+	prs.average_ppa_passing_down,
+	prs.total_ppa_all,
+	prs.total_ppa_pass,
+	prs.total_ppa_rush,
+	prs.total_ppa_first_down,
+	prs.total_ppa_second_down,
+	prs.total_ppa_third_down,
+	prs.total_ppa_standard_downs,
+	prs.total_ppa_passing_down
+	from football.player_season ps,
+	football.players p,
+	football.player_receiving_stats prs,
+	(select p.id, p.wr_cluster_label_kmeans from (select count(*), wr_cluster_label_kmeans
+			from football.players where position = 'WR'
+			group by wr_cluster_label_kmeans
+			order by count desc) c,
+		football.players p 
+		where c.count > 1
+		and c.wr_cluster_label_kmeans = p.wr_cluster_label_kmeans
+		union
+		select p.id, 500 wr_cluster_label from (select count(*), wr_cluster_label_kmeans
 		from football.players where position = 'WR'
 		group by wr_cluster_label_kmeans
 		order by count desc) c,
-	football.players p 
-	where c.count > 1
-	and c.wr_cluster_label_kmeans = p.wr_cluster_label_kmeans
-	union
-	select p.id, 500 wr_cluster_label from (select count(*), wr_cluster_label_kmeans
-	from football.players where position = 'WR'
-	group by wr_cluster_label_kmeans
-	order by count desc) c,
-	football.players p
-	where c.count = 1
-	and p.wr_cluster_label_kmeans = c.wr_cluster_label_kmeans) clust
-where p.id = ps.player_id
-and p.position = 'WR'
-and prs.player_id = ps.player_id
-and prs.year = ps.year
-and ps.is_college_season = true
-and p.id <> 1402
-and p.id = clust.id
-order by ps.player_id, ps.year;
-"""
+		football.players p
+		where c.count = 1
+		and p.wr_cluster_label_kmeans = c.wr_cluster_label_kmeans) clust
+	where p.id = ps.player_id
+	and p.position = 'WR'
+	and prs.player_id = ps.player_id
+	and prs.year = ps.year
+	and ps.is_college_season = true
+	and p.id <> 1402
+	and p.id = clust.id
+	order by ps.player_id, ps.year;
+	"""
+elif cluster_type == "affinity":
 
-
-affinity_query_string = """select
-p.name,
-clust.wr_cluster_label,
-p.height,
-p.weight,
-ps.player_id,
-ps.player_age,
-ps.games_played,
-ps.games_started,
-prs.targets,
-prs.receptions,
-prs.catch_per,
-prs.yards,
-prs.yards_per_rec,
-prs.tds,
-prs.first_downs_receiving,
-prs.receiving_success_rate,
-prs.longest_reception,
-prs.yards_per_target,
-prs.receptions_per_game,
-prs.yards_per_game,
-prs.fumbles,
-prs.overall_usage,
-prs.pass_usage,
-prs.rush_usage,
-prs.first_down_usage,
-prs.second_down_usage,
-prs.third_down_usage,
-prs.standard_downs_usage,
-prs.passing_downs_usage,
-prs.average_ppa_all,
-prs.average_ppa_pass,
-prs.average_ppa_rush,
-prs.average_ppa_first_down,
-prs.average_ppa_second_down,
-prs.average_ppa_third_down,
-prs.average_ppa_standard_downs,
-prs.average_ppa_passing_down,
-prs.total_ppa_all,
-prs.total_ppa_pass,
-prs.total_ppa_rush,
-prs.total_ppa_first_down,
-prs.total_ppa_second_down,
-prs.total_ppa_third_down,
-prs.total_ppa_standard_downs,
-prs.total_ppa_passing_down
-from football.player_season ps,
-football.players p,
-football.player_receiving_stats prs,
-(select p.id, p.wr_cluster_label from (select count(*), wr_cluster_label
+	query_string = """select
+	p.name,
+	clust.wr_cluster_label,
+	p.height,
+	p.weight,
+	ps.player_id,
+	ps.player_age,
+	ps.games_played,
+	ps.games_started,
+	prs.targets,
+	prs.receptions,
+	prs.catch_per,
+	prs.yards,
+	prs.yards_per_rec,
+	prs.tds,
+	prs.first_downs_receiving,
+	prs.receiving_success_rate,
+	prs.longest_reception,
+	prs.yards_per_target,
+	prs.receptions_per_game,
+	prs.yards_per_game,
+	prs.fumbles,
+	prs.overall_usage,
+	prs.pass_usage,
+	prs.rush_usage,
+	prs.first_down_usage,
+	prs.second_down_usage,
+	prs.third_down_usage,
+	prs.standard_downs_usage,
+	prs.passing_downs_usage,
+	prs.average_ppa_all,
+	prs.average_ppa_pass,
+	prs.average_ppa_rush,
+	prs.average_ppa_first_down,
+	prs.average_ppa_second_down,
+	prs.average_ppa_third_down,
+	prs.average_ppa_standard_downs,
+	prs.average_ppa_passing_down,
+	prs.total_ppa_all,
+	prs.total_ppa_pass,
+	prs.total_ppa_rush,
+	prs.total_ppa_first_down,
+	prs.total_ppa_second_down,
+	prs.total_ppa_third_down,
+	prs.total_ppa_standard_downs,
+	prs.total_ppa_passing_down
+	from football.player_season ps,
+	football.players p,
+	football.player_receiving_stats prs,
+	(select p.id, p.wr_cluster_label from (select count(*), wr_cluster_label
+			from football.players where position = 'WR'
+			group by wr_cluster_label
+			order by count desc) c,
+		football.players p 
+		where c.count > 1
+		and c.wr_cluster_label = p.wr_cluster_label
+		union
+		select p.id, 500 wr_cluster_label from (select count(*), wr_cluster_label
 		from football.players where position = 'WR'
 		group by wr_cluster_label
 		order by count desc) c,
-	football.players p 
-	where c.count > 1
-	and c.wr_cluster_label = p.wr_cluster_label
-	union
-	select p.id, 500 wr_cluster_label from (select count(*), wr_cluster_label
-	from football.players where position = 'WR'
-	group by wr_cluster_label
-	order by count desc) c,
-	football.players p
-	where c.count = 1
-	and p.wr_cluster_label = c.wr_cluster_label) clust
-where p.id = ps.player_id
-and p.position = 'WR'
-and prs.player_id = ps.player_id
-and prs.year = ps.year
-and ps.is_college_season = true
-and p.id <> 1402
-and p.id = clust.id
-order by ps.player_id, ps.year;"""
+		football.players p
+		where c.count = 1
+		and p.wr_cluster_label = c.wr_cluster_label) clust
+	where p.id = ps.player_id
+	and p.position = 'WR'
+	and prs.player_id = ps.player_id
+	and prs.year = ps.year
+	and ps.is_college_season = true
+	and p.id <> 1402
+	and p.id = clust.id
+	order by ps.player_id, ps.year;"""
 
-df = pd.read_sql_query(meanshift_query_string, con=conn)
+df = pd.read_sql_query(query_string, con=conn)
 df = df.fillna(value=0)
 
 groupeddfbylabel = df.groupby(df.columns[1])
@@ -409,9 +548,9 @@ for label, group in groupeddfbylabel:
 label_count = np.transpose([labels, count])
 
 
-condition = list(filter(lambda x: x[1] > 1, label_count))
-clusters_subject_to_condition = [i[1] for i in condition]
-##df = df[df['wr_cluster_label'].isin(clusters_subject_to_condition)]
+condition = list(filter(lambda x: x[1] == 1, label_count))
+clusters_subject_to_condition = [i[0] for i in condition]
+df = df[~df['wr_cluster_label'].isin(clusters_subject_to_condition)]
 
 ## Normalize Data
 
@@ -445,64 +584,31 @@ nonZeroRows = tf.reduce_sum(tf.abs(ragged_tensor), 2) > 0
 
 ragged_tensor = tf.ragged.boolean_mask(ragged_tensor, nonZeroRows)
 
-full_dim = (ragged_tensor.shape.as_list()[1], ragged_tensor.shape.as_list()[2],)
+classifier_model = load_classifier_model(cluster_type)
 
-n_features = ragged_tensor.shape.as_list()[2]
+encoder_model = load_encoder_model()
 
-train_data, test_data, train_labels, test_labels = train_test_split_as_tensor_balance_category_v2(ragged_tensor, player_labels, 0.8, filtered_count, player_names, label_count)
+if classifier_model == None:
+	classifier_model = create_classifier_model(ragged_tensor, player_labels, encoder_model, cluster_type)
 
-num_classes = train_labels.shape[1]
-input_layer = keras.Input(shape=full_dim, ragged=True)
+full_model = keras.Model(encoder_model.input, classifier_model(encoder_model.output), name="Full_Classifier")
 
-time_distributed_layer1 = layers.TimeDistributed(layers.Dense(n_features))(input_layer)
+y_pred = full_model.predict(ragged_tensor)
 
-lstm_layer1 = layers.Bidirectional(layers.LSTM(64, dropout=0.4, return_sequences=True))(time_distributed_layer1)
-lstm_layer2 = layers.Bidirectional(layers.LSTM(48, dropout=0.4, return_sequences=True))(lstm_layer1)
-
-lstm_layer3 = layers.Bidirectional(layers.LSTM(32, dropout=0.4, return_sequences=False))(lstm_layer2)
-
-dense_layer1 = layers.Dense(64, activation='sigmoid')(lstm_layer3)
-dense_layer2 = layers.Dense(48, activation='sigmoid')(dense_layer1)
-dense_layer3 = layers.Dense(32, activation='sigmoid')(dense_layer2)
-
-output_layer = layers.Dense(num_classes, activation='softmax')(dense_layer3)
-
-model = keras.models.Model(inputs=input_layer, outputs=output_layer)
-model.summary()
-
-model.compile(optimizer="adam", loss=tf.keras.losses.categorical_crossentropy , metrics=[tf.keras.metrics.CategoricalAccuracy()])
-
-epoch_size = 300
-
-callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=10)
-
-history = model.fit(train_data, train_labels, epochs=epoch_size, batch_size=10, callbacks=[callback], shuffle=True, validation_data=(test_data, test_labels))
-
-num_epochs = len(history.epoch)
-
-history_fig, (ax1, ax2) = plt.subplots(2, sharex=True)
-history_fig.suptitle('Classifier Training Performance')
-ax1.plot(range(0,num_epochs), history.history['categorical_accuracy'], color='blue')
-ax1.plot(range(0,num_epochs), history.history['val_categorical_accuracy'], color='red', alpha=0.9)
-ax1.set(ylabel='Reconstruction Accuracy')
-ax2.plot(range(0,num_epochs), np.log10(history.history['loss']), color='blue')
-ax2.plot(range(0,num_epochs), np.log10(history.history['val_loss']), color='red', alpha=0.9)
-ax2.set(ylabel='log_10(loss)', xlabel='Training Epoch')
-
-history_fig.show()
-
-y_pred = model.predict(test_data)
 y_pred = tf.argmax(y_pred, axis=1)
 
-y_true = tf.argmax(test_labels, axis=1)
-confusion_mtx = tf.math.confusion_matrix(y_true, y_pred)
+y = pd.get_dummies(player_labels).astype('float32').values 
+y_true = tf.argmax(y, axis=1)
 
+confusion_mtx = tf.math.confusion_matrix(y_true, y_pred)
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(confusion_mtx,
-            xticklabels=set(y_true.numpy()),
-            yticklabels=set(y_true.numpy()),
-            annot=True, fmt='g')
+			xticklabels=set(y_true.numpy()),
+			yticklabels=set(y_true.numpy()),
+			annot=True, fmt='g')
 plt.xlabel('Prediction')
 plt.ylabel('Label')
 plt.show()
+
+full_model.save('python/models/classifiers/WR-rookie-{0}-classifier.keras'.format(cluster_type))
