@@ -469,11 +469,11 @@ full_dim = (ragged_tensor.shape.as_list()[1], ragged_tensor.shape.as_list()[2],)
 n_timesteps = ragged_tensor.shape.as_list()[1] # should be 11
 
 n_features = ragged_tensor.shape.as_list()[2] # 44 
-
+encoding_dim = 10
 encoding_dim1 = 256
 encoding_dim2 = 64
 encoding_dim3 = 32
-encoding_dim4 = 8 # we will use these 100 dimensions for clustering
+encoding_dim4 = encoding_dim # we will use these 100 dimensions for clustering
 
 # This is our encoder input
 encoder_input_data = keras.Input(shape=full_dim, ragged=True)
@@ -508,7 +508,7 @@ autoencoder_model.summary()
 
 autoencoder_model.compile(optimizer="RMSprop", loss=tf.keras.losses.mean_squared_error, metrics=[keras.metrics.Accuracy()])
 
-epoch_size = 300
+epoch_size = 250
 
 
 history = autoencoder_model.fit(train_data, train_data, epochs=epoch_size, batch_size=10, shuffle=True, validation_data=(test_data, test_data))
@@ -526,5 +526,5 @@ ax2.set(ylabel='log_10(loss)', xlabel='Training Epoch')
 
 history_fig.show()
 
-autoencoder_model.save('python/models/{0}-autoencoder-WR-cluster-output-rookies-1990-td.keras'.format('8'))
-encoder_model.save('python/models/{0}-encoder-WR-cluster-output-rookies-1990-td.keras'.format('8'))
+autoencoder_model.save('python/models/{0}-autoencoder-WR-cluster-output-rookies-1990-td.keras'.format(encoding_dim))
+encoder_model.save('python/models/{0}-encoder-WR-cluster-output-rookies-1990-td.keras'.format(encoding_dim))

@@ -103,7 +103,6 @@ def repeat_vector2(args):
 
 def create_auto_encoder(encoding_dims, ragged_tensor):
     full_dim = (ragged_tensor.shape.as_list()[1], ragged_tensor.shape.as_list()[2],)
-    n_timesteps = ragged_tensor.shape.as_list()[1] # should be 11
 
     n_features = ragged_tensor.shape.as_list()[2] # 44 
 
@@ -118,25 +117,29 @@ def create_auto_encoder(encoding_dims, ragged_tensor):
     # the encoded representation of the input
     time_distributed_layer1 = layers.TimeDistributed(layers.Dense(n_features))(encoder_input_data)
 
-    encoded_layer1 = layers.LSTM(encoding_dim1, return_sequences=False)(time_distributed_layer1)
-    encoded_layer2 = keras.layers.Dense(encoding_dim2, activation='relu')(encoded_layer1)
-    encoded_layer3 = keras.layers.Dense(encoding_dim3, activation='relu')(encoded_layer2)
+    lstm_layer1 = layers.LSTM(encoding_dim1, return_sequences=True)(time_distributed_layer1)
+    lstm_layer2 = layers.LSTM(encoding_dim1, return_sequences=False)(lstm_layer1)
+
+    encoded_layer1 = keras.layers.Dense(encoding_dim2, activation='relu')(lstm_layer2)
+    encoded_layer2 = keras.layers.Dense(encoding_dim3, activation='relu')(encoded_layer1)
 
     # Note that encoded_layer3 is our 3 dimensional "clustered" layer, which we will later use for clustering
-    encoded_layer4 = keras.layers.Dense(encoding_dim4, activation='relu', name="ClusteringLayer")(encoded_layer3)
+    encoded_layer3 = keras.layers.Dense(encoding_dim4, activation='relu', name="ClusteringLayer")(encoded_layer2)
 
-    encoder_model = keras.Model(encoder_input_data, encoded_layer4)
+    encoder_model = keras.Model(encoder_input_data, encoded_layer3)
 
     # the reconstruction of the input
-    decoded_layer4 = keras.layers.Dense(encoding_dim3, activation='relu')(encoded_layer4)
+    decoded_layer3 = keras.layers.Dense(encoding_dim3, activation='relu')(encoded_layer3)
 
-    decoded_layer3 = keras.layers.Dense(encoding_dim2, activation='relu')(decoded_layer4)
-    decoded_layer2 = keras.layers.Dense(encoding_dim1, activation='relu')(decoded_layer3)
-    repeat_vector_layer = keras.layers.Lambda(repeat_vector2, output_shape=(None, full_dim[1])) ([decoded_layer2, encoder_input_data])
+    decoded_layer2 = keras.layers.Dense(encoding_dim2, activation='relu')(decoded_layer3)
+    decoded_layer1 = keras.layers.Dense(encoding_dim1, activation='relu')(decoded_layer2)
+    repeat_vector_layer = keras.layers.Lambda(repeat_vector2, output_shape=(None, full_dim[1])) ([decoded_layer1, encoder_input_data])
 
     ##repeat_vector_layer = layers.RepeatVector(11)(decoded_layer2)
-    decoded_layer1 = layers.LSTM(n_features, return_sequences=True)(repeat_vector_layer)
-    time_distributed_layer = layers.TimeDistributed(layers.Dense(n_features))(decoded_layer1)
+    decoded_lstm1 = layers.LSTM(n_features, return_sequences=True)(repeat_vector_layer)
+    decoded_lstm2 = layers.LSTM(n_features, return_sequences=True)(decoded_lstm1)
+
+    time_distributed_layer = layers.TimeDistributed(layers.Dense(n_features))(decoded_lstm2)
 
 
     # This model maps an input to its autoencoder reconstruction
@@ -228,7 +231,6 @@ and p.position = 'WR'
 and prs.player_id = ps.player_id
 and prs.year = ps.year
 and ps.is_college_season = false
-and p.id <> 1402
 order by ps.player_id, ps.year;"""
 
 df = pd.read_sql_query(queryString, con=conn)
@@ -268,4 +270,4 @@ ragged_tensor = tf.ragged.boolean_mask(ragged_tensor, nonZeroRows)
 
 
 print("Training model with {0} encoded dims".format(2))
-create_auto_encoder(2, ragged_tensor)
+create_auto_encoder(16, ragged_tensor)
