@@ -18,11 +18,11 @@ from sklearn import manifold
 # TensorFlow and Keras
 import tensorflow as tf
 from tensorflow import keras
-from keras import layers, Sequential
+from keras import layers, Sequential, regularizers
 from keras import backend as K
 import random
 
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, SVMSMOTE, BorderlineSMOTE
 
 def getdbconnectionfromconfiguration(config):
     """ Connect to the PostgreSQL database server """
@@ -101,8 +101,8 @@ def balance_data_with_oversampling(label_count, data, labels):
 	x = 0
 	return data, labels
 
-def load_encoder_model():
-	return tf.keras.models.load_model('python/models/8-encoder-WR-cluster-output-rookies-1990-td.keras', safe_mode=False)
+def load_encoder_model(encoding_dims):
+	return tf.keras.models.load_model('python/models/{0}-encoder-WR-cluster-output-rookies-1990-td.keras'.format(encoding_dims), safe_mode=False)
 
 
 def train_test_split_as_tensor_balance_category_v2(data, labels, training_size, useage_count, player_names, label_count):
@@ -232,28 +232,33 @@ def train_test_split_as_tensor_balance_category_v3(data, labels, training_size, 
 
 	return train_data, test_data, train_labels, test_labels
 
-def create_classifier_model(ragged_tensor, player_labels, encoder_model, cluster_type):
+def create_classifier_model(ragged_tensor, player_labels, encoder_model, cluster_type, encoding_dims):
 
 	encoded_data = encoder_model.predict(ragged_tensor)
 
 
-	oversample = SMOTE(k_neighbors=1)
+	oversample = SMOTE(k_neighbors=1, random_state=145)
 	X, y = oversample.fit_resample(encoded_data, player_labels)
 	y = pd.get_dummies(y).astype('float32').values 
 	##train_data, test_data, train_labels, test_labels = train_test_split_as_tensor_balance_category_v2(ragged_tensor, player_labels, 0.8, filtered_count, player_names, label_count)
 
 	train_X, test_X, train_y, test_y = train_test_split(X, y, test_size=0.2)
 
-
-
 	input_layer = keras.Input(shape=encoded_data.shape[1])
 
+	normalization_layer = tf.keras.layers.Normalization(axis=-1) (input_layer)
+	dense_layer1 = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001))(normalization_layer)
+	dropout1 = layers.Dropout(0.1)(dense_layer1)
+	dense_layer2 = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001))(dropout1)
+	dropout2 = layers.Dropout(0.1)(dense_layer2)
+	dense_layer3 = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001))(dropout2)
+	dropout3 = layers.Dropout(0.1)(dense_layer3)
+	dense_layer4 = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001))(dropout3)
+	dropout4 = layers.Dropout(0.1)(dense_layer4)
+	dense_layer5 = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001))(dropout4)
 
-	dense_layer1 = layers.Dense(64, activation='relu')(input_layer)
-	dense_layer2 = layers.Dense(48, activation='relu')(dense_layer1)
-	dense_layer3 = layers.Dense(32, activation='relu')(dense_layer2)
-
-	output_layer = layers.Dense(len(set(player_labels)), activation='softmax')(dense_layer3)
+	
+	output_layer = layers.Dense(len(set(player_labels)), activation='softmax')(dense_layer5)
 
 	model = keras.models.Model(inputs=input_layer, outputs=output_layer)
 	model.summary()
@@ -293,11 +298,12 @@ def create_classifier_model(ragged_tensor, player_labels, encoder_model, cluster
 	plt.ylabel('Label')
 	plt.show()
 
-	model.save('python/models/WR-rookie-{0}-cluster-classifier-from-8-dims.keras'.format(cluster_type))
+	model.save('python/models/WR-rookie-{0}-cluster-classifier-from-{1}-dims.keras'.format(cluster_type, encoding_dims))
+	return model
 
-def load_classifier_model(cluster_type):
+def load_classifier_model(cluster_type, encoding_dims):
 	try:
-		return tf.keras.models.load_model('python/models/WR-rookie-{0}-cluster-classifier-from-8-dims.keras'.format(cluster_type), safe_mode=False)
+		return tf.keras.models.load_model('python/models/WR-rookie-{0}-cluster-classifier-from-{1}-dims.keras'.format(cluster_type, encoding_dims), safe_mode=False)
 	except:
 		return None
 
@@ -307,7 +313,7 @@ new_path = os.path.join(cur_path, "..\\FootballDataReader.Host\\appsettings.json
 conn = getdbconnectionfromconfiguration(new_path)
 cluster_type = "kmeans"
 query_string = ''
-if cluster_type == "kmeans":
+if cluster_type == "meanshift":
 	query_string ="""
 	select
 	p.name,
@@ -380,7 +386,7 @@ if cluster_type == "kmeans":
 	and ps.is_college_season = true
 	and p.id <> 1402
 	and p.id = clust.id
-	order by ps.player_id, ps.year;
+	order by p.player_name, ps.year;
 	"""
 elif cluster_type == "kmeans":
 	query_string ="""
@@ -461,7 +467,7 @@ elif cluster_type == "affinity":
 
 	query_string = """select
 	p.name,
-	clust.wr_cluster_label,
+	clust.wr_cluster_label_kmeans,
 	p.height,
 	p.weight,
 	ps.player_id,
@@ -532,6 +538,66 @@ elif cluster_type == "affinity":
 	and p.id = clust.id
 	order by ps.player_id, ps.year;"""
 
+else:
+	query_string = """select
+	p.name,
+	0 wr_cluster_label,
+	p.height,
+	p.weight,
+	ps.player_id,
+	ps.player_age,
+	ps.games_played,
+	ps.games_started,
+	prs.targets,
+	prs.receptions,
+	prs.catch_per,
+	prs.yards,
+	prs.yards_per_rec,
+	prs.tds,
+	prs.first_downs_receiving,
+	prs.receiving_success_rate,
+	prs.longest_reception,
+	prs.yards_per_target,
+	prs.receptions_per_game,
+	prs.yards_per_game,
+	prs.fumbles,
+	prs.overall_usage,
+	prs.pass_usage,
+	prs.rush_usage,
+	prs.first_down_usage,
+	prs.second_down_usage,
+	prs.third_down_usage,
+	prs.standard_downs_usage,
+	prs.passing_downs_usage,
+	prs.average_ppa_all,
+	prs.average_ppa_pass,
+	prs.average_ppa_rush,
+	prs.average_ppa_first_down,
+	prs.average_ppa_second_down,
+	prs.average_ppa_third_down,
+	prs.average_ppa_standard_downs,
+	prs.average_ppa_passing_down,
+	prs.total_ppa_all,
+	prs.total_ppa_pass,
+	prs.total_ppa_rush,
+	prs.total_ppa_first_down,
+	prs.total_ppa_second_down,
+	prs.total_ppa_third_down,
+	prs.total_ppa_standard_downs,
+	prs.total_ppa_passing_down
+	from football.player_season ps,
+	football.players p,
+	football.player_receiving_stats prs
+	where p.id = ps.player_id
+	and p.position = 'WR'
+	and prs.player_id = ps.player_id
+	and prs.year = ps.year
+	and ps.is_college_season = true
+	and (p.id = 1282 or p.id = 1261 or p.id = 1182)
+	order by ps.player_id, ps.year;"""
+
+	cluster_type = "kmeans"
+
 df = pd.read_sql_query(query_string, con=conn)
 df = df.fillna(value=0)
 
@@ -550,7 +616,7 @@ label_count = np.transpose([labels, count])
 
 condition = list(filter(lambda x: x[1] == 1, label_count))
 clusters_subject_to_condition = [i[0] for i in condition]
-df = df[~df['wr_cluster_label'].isin(clusters_subject_to_condition)]
+##df = df[~df['wr_cluster_label'].isin(clusters_subject_to_condition)]
 
 ## Normalize Data
 
@@ -578,22 +644,26 @@ ragged_tensor = tf.RaggedTensor.from_row_lengths(values=plain_input_data, row_le
 
 ragged_tensor = ragged_tensor.to_tensor()
 
-ragged_tensor = tf.math.l2_normalize(ragged_tensor, axis = -1)
+##ragged_tensor = tf.math.l2_normalize(ragged_tensor, axis = -1)
 
 nonZeroRows = tf.reduce_sum(tf.abs(ragged_tensor), 2) > 0 
 
 ragged_tensor = tf.ragged.boolean_mask(ragged_tensor, nonZeroRows)
 
-classifier_model = load_classifier_model(cluster_type)
+encoding_dims = 10
 
-encoder_model = load_encoder_model()
+##classifier_model = load_classifier_model(cluster_type, encoding_dims)
+classifier_model = None
+encoder_model = load_encoder_model(encoding_dims)
 
 if classifier_model == None:
-	classifier_model = create_classifier_model(ragged_tensor, player_labels, encoder_model, cluster_type)
+	classifier_model = create_classifier_model(ragged_tensor, player_labels, encoder_model, cluster_type, encoding_dims)
 
 full_model = keras.Model(encoder_model.input, classifier_model(encoder_model.output), name="Full_Classifier")
 
 y_pred = full_model.predict(ragged_tensor)
+
+encoded_values = encoder_model.predict(ragged_tensor)
 
 y_pred = tf.argmax(y_pred, axis=1)
 
@@ -604,11 +674,14 @@ confusion_mtx = tf.math.confusion_matrix(y_true, y_pred)
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(confusion_mtx,
-			xticklabels=set(y_true.numpy()),
+			xticklabels=set(y_pred.numpy()),
 			yticklabels=set(y_true.numpy()),
 			annot=True, fmt='g')
 plt.xlabel('Prediction')
 plt.ylabel('Label')
 plt.show()
 
-full_model.save('python/models/classifiers/WR-rookie-{0}-classifier.keras'.format(cluster_type))
+
+
+
+full_model.save('python/models/classifiers/WR-rookie-{0}-classifier-{1}-dims.keras'.format(cluster_type, encoding_dims))
